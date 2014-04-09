@@ -28,7 +28,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.apache.lucene.util.AttributeSource;
-import org.elasticsearch.ElasticSearchIllegalArgumentException;
+import org.elasticsearch.ElasticsearchIllegalArgumentException;
 import org.elasticsearch.common.settings.Settings;
 
 /**
@@ -181,7 +181,7 @@ public class InlineAnnotationFilter extends TokenFilter {
         
         if (start_delim != null) {
         	if (start_delim.length() == 0) {
-        		throw new ElasticSearchIllegalArgumentException(
+        		throw new ElasticsearchIllegalArgumentException(
         				"Analyzer " + name + " has invalid settings: start " +
         						"delimiter cannot be empty string");
         	}
@@ -190,7 +190,7 @@ public class InlineAnnotationFilter extends TokenFilter {
         
         if (end_delim != null) {
         	if (end_delim.length() == 0) {
-        		throw new ElasticSearchIllegalArgumentException(
+        		throw new ElasticsearchIllegalArgumentException(
         				"Analyzer " + name + " has invalid settings: end " +
         						"delimiter cannot be empty string");
         	}
@@ -207,7 +207,7 @@ public class InlineAnnotationFilter extends TokenFilter {
         
         if (delimiter != null) {
         	if (delimiter.length() == 0) {
-        		throw new ElasticSearchIllegalArgumentException(
+        		throw new ElasticsearchIllegalArgumentException(
         				"Analyzer " + name + " has invalid settings: " +
         						"delimiter cannot be empty string");
         	}
