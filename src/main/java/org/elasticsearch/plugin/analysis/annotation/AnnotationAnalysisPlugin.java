@@ -20,19 +20,20 @@
 package org.elasticsearch.plugin.analysis.annotation;
 
 //import com.google.common.collect.ImmutableList;
-import org.elasticsearch.common.collect.ImmutableList;
 import org.elasticsearch.common.inject.Module;
 import org.elasticsearch.index.analysis.AnalysisModule;
 import org.elasticsearch.index.analysis.annotation.AnnotationAnalysisBinderProcessor;
 import org.elasticsearch.indices.analysis.annotation.AnnotationIndicesAnalysisModule;
-import org.elasticsearch.plugins.AbstractPlugin;
+
 
 import java.util.Collection;
+import java.util.Collections;
+import org.elasticsearch.plugins.Plugin;
 
 /**
  *
  */
-public class AnnotationAnalysisPlugin extends AbstractPlugin {
+public class AnnotationAnalysisPlugin extends Plugin {
 
     @Override
     public String name() {
@@ -44,12 +45,12 @@ public class AnnotationAnalysisPlugin extends AbstractPlugin {
         return "Inline annotations analysis support";
     }
 
-    @Override
-    public Collection<Class<? extends Module>> modules() {
-        return ImmutableList.<Class<? extends Module>>of(AnnotationIndicesAnalysisModule.class);
+      @Override
+    public Collection<Module> nodeModules() {
+        return Collections.<Module>singletonList(new AnnotationIndicesAnalysisModule());
     }
-
+    
     public void onModule(AnalysisModule module) {
-        module.addProcessor(new AnnotationAnalysisBinderProcessor());
+         module.addProcessor(new AnnotationAnalysisBinderProcessor());
     }
 }

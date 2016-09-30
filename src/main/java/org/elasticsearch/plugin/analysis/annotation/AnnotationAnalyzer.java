@@ -19,8 +19,6 @@
 
 package org.elasticsearch.plugin.analysis.annotation;
 
-import java.io.Reader;
-
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
@@ -45,10 +43,9 @@ public class AnnotationAnalyzer extends Analyzer {
 
 
 	@Override
-	protected TokenStreamComponents createComponents(String fieldName,
-			Reader reader) {
-		Tokenizer source = new WhitespaceTokenizer(version, reader);
-		TokenStream filter = new LowerCaseFilter(version, source);
+	protected TokenStreamComponents createComponents(String fieldName) {
+		Tokenizer source = new WhitespaceTokenizer();
+		TokenStream filter = new LowerCaseFilter(source);
 		filter = new InlineAnnotationFilter(filter);
 		
 		return new TokenStreamComponents(source, filter);

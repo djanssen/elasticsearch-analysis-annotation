@@ -25,7 +25,7 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.analysis.AbstractIndexAnalyzerProvider;
-import org.elasticsearch.index.settings.IndexSettings;
+import org.elasticsearch.index.settings.IndexSettingsService;
 import org.elasticsearch.plugin.analysis.annotation.AnnotationAnalyzer;
 import org.elasticsearch.plugin.analysis.annotation.InlineAnnotationFilter;
 
@@ -37,8 +37,8 @@ public class AnnotationAnalyzerProvider extends AbstractIndexAnalyzerProvider<An
     private final String name;
 
     @Inject
-    public AnnotationAnalyzerProvider(Index index, @IndexSettings Settings indexSettings, Environment env, @Assisted String name, @Assisted Settings settings) {
-        super(index, indexSettings, name, settings);
+    public AnnotationAnalyzerProvider(Index index, IndexSettingsService  indexSettingsService, Environment env, @Assisted String name, @Assisted Settings settings) {
+        super(index, indexSettingsService.getSettings(), name, settings);
         
         this.name = name;
 

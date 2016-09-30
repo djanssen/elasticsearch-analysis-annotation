@@ -22,13 +22,18 @@ package org.elasticsearch.plugin.analysis.annotation;
 import java.io.IOException;
 import java.util.Stack;
 
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+import java.io.IOException;
+import java.util.regex.PatternSyntaxException;
+
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.apache.lucene.util.AttributeSource;
-import org.elasticsearch.ElasticsearchIllegalArgumentException;
+import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.common.settings.Settings;
 
 /**
@@ -59,9 +64,11 @@ public class InlineAnnotationFilter extends TokenFilter {
 	public static String SYNONYMS_DELIMITER = ";";
 	public static String SYNONYM_PREFIX = "[";
 	public static String SYNONYM_SUFFIX = "]";
-	
+	public static Pattern SYNONYM_PATTERN = null;
+        
 	private Stack<String> synonymStack;
-	private AttributeSource.State current;
+	private final Matcher synonymMatcher;
+        private AttributeSource.State current;
 	private final CharTermAttribute termAtt;
 	private final PositionIncrementAttribute posIncrAtt;
 	private final TypeAttribute typeAtt;
@@ -73,10 +80,17 @@ public class InlineAnnotationFilter extends TokenFilter {
 		this.termAtt = addAttribute(CharTermAttribute.class);
 		this.posIncrAtt = addAttribute(PositionIncrementAttribute.class);
 		this.typeAtt = addAttribute(TypeAttribute.class);
+                if (SYNONYM_PATTERN != null) {
+                    this.synonymMatcher = SYNONYM_PATTERN.matcher(termAtt);
+                } else {
+                    this.synonymMatcher = null;
+                }
+                current = null;
 	}
 
 	@Override
 	public boolean incrementToken() throws IOException {
+                
 		if (synonymStack.size() > 0) {
 			popAliasFromStack();
 			return true;
@@ -97,13 +111,18 @@ public class InlineAnnotationFilter extends TokenFilter {
 		return true;
 	}
 
+        @Override
+	public void reset() throws IOException {
+            super.reset();
+            current = null;
+        }
 	private void popAliasFromStack() 
 	{
 		String syn = SYNONYM_PREFIX + synonymStack.pop() + SYNONYM_SUFFIX;
 		restoreState(current);
 		termAtt.copyBuffer(syn.toCharArray(), 0, syn.length());
 		typeAtt.setType(SYNONYM_TOKEN_TYPE);
-		posIncrAtt.setPositionIncrement(0);
+                posIncrAtt.setPositionIncrement(0);
 	}
 
 	
@@ -117,28 +136,44 @@ public class InlineAnnotationFilter extends TokenFilter {
 		String buffer = termAtt.toString();
 		String synonyms = null;
 		int length = buffer.length();
-		
-		searchingLoop:
-		for (int i = 0; i < length; i++) {
-			if (buffer.startsWith(SYNONYM_START_DELIMITER,i)) {
-				
-				// It might not be necessary to search for closing delimiter
-				int synonyms_start = i + SYNONYM_START_DELIMITER.length();
-				for (int j = synonyms_start; j < length; j++) {
-					if (buffer.startsWith(SYNONYM_END_DELIMITER,j)) {
-						synonyms = buffer.substring(synonyms_start, j);
-						termAtt.setLength(i);
-						break searchingLoop;
-					}
-				}
-			}
-		}
+                
+                if (current == null)
+                    return false;
+                
+		// Annotation RegEx search 
+                if (synonymMatcher != null) {
+                    synonymMatcher.reset();
+                    if (synonymMatcher.matches()) {
+                        synonyms = termAtt.toString();
+                        termAtt.setLength(0);
+                        synonymStack.push(synonyms);
+                        return true;
+                    }
+                    return false;
+                } 
+                
+                
+        	// Annotation Prefix/Suffix search 
+                searchingLoop:
+                for (int i = 0; i < length; i++) {
+                        if (buffer.startsWith(SYNONYM_START_DELIMITER,i)) {
+
+                                // It might not be necessary to search for closing delimiter
+                                int synonyms_start = i + SYNONYM_START_DELIMITER.length();
+                                for (int j = synonyms_start; j < length; j++) {
+                                        if (buffer.startsWith(SYNONYM_END_DELIMITER,j)) {
+                                                synonyms = buffer.substring(synonyms_start, j);
+                                                termAtt.setLength(i);
+                                                break searchingLoop;
+                                        }
+                                }
+                        }
+                }
 		
 		// No synonyms have been found
 		if (synonyms == null) {
 			return false;
 		}
-		
 		
 		int beginIndex = 0;
 		int endIndex = -1;
@@ -151,9 +186,10 @@ public class InlineAnnotationFilter extends TokenFilter {
 		// Last synonym, which is not ended by SYNONYMS_DELIMITER, eq [city;Austria]
 		// For [city;Austria;] the beginIndex will be set to index, that is equal to the string length
 		if (beginIndex < synonyms.length() && synonyms.length() > 0) {
-			synonymStack.push(synonyms.substring(beginIndex).trim());
+                    synonymStack.push(synonyms.substring(beginIndex).trim());
 		}
-		return true;
+                
+		return (!synonymStack.empty());
 	}
 	
 	
@@ -170,52 +206,58 @@ public class InlineAnnotationFilter extends TokenFilter {
 	 * @param name - logical name of the analyzer
 	 */
 	public static void settings(Settings settings, String name) {
-		String start_delim, end_delim, syn_prefix, syn_suffix, delimiter, token_type;
-        start_delim = settings.get("start");
-        end_delim = settings.get("end");
-        syn_prefix = settings.get("prefix");
-        syn_suffix = settings.get("suffix");
-        delimiter = settings.get("delimiter");
-        token_type = settings.get("token-type");
+            String start_delim, end_delim, syn_prefix, syn_suffix, delimiter, token_type, synonym_pattern;
+            start_delim = settings.get("start");
+            end_delim = settings.get("end");
+            synonym_pattern = settings.get("pattern");
+            syn_prefix = settings.get("prefix");
+            syn_suffix = settings.get("suffix");
+            delimiter = settings.get("delimiter");
+            token_type = settings.get("token-type");
         
+            if (synonym_pattern != null && synonym_pattern.length() != 0) {
+                if (start_delim != null || end_delim != null || delimiter != null) {
+                    throw new org.elasticsearch.ElasticsearchException("Analyzer " + name + " has invalid settings: synonym 'pattern' cannot be used with 'start', 'end' and 'delimiter' together");
+                }
+                try {
+                    SYNONYM_PATTERN = Pattern.compile(synonym_pattern);
+                } catch (PatternSyntaxException e) {
+                    throw new org.elasticsearch.ElasticsearchException("Configuration Error: 'pattern' can not be parsed: " +  synonym_pattern);
+                }
+            }
+            if (start_delim != null) {
+                if (start_delim.length() == 0) {
+                    throw new org.elasticsearch.ElasticsearchException("Analyzer " + name + " has invalid settings: start delimiter cannot be empty string");
+                }
+                InlineAnnotationFilter.SYNONYM_START_DELIMITER = start_delim;
+            }
         
-        if (start_delim != null) {
-        	if (start_delim.length() == 0) {
-        		throw new ElasticsearchIllegalArgumentException(
-        				"Analyzer " + name + " has invalid settings: start " +
-        						"delimiter cannot be empty string");
-        	}
-        	InlineAnnotationFilter.SYNONYM_START_DELIMITER = start_delim;
-        }
-        
-        if (end_delim != null) {
-        	if (end_delim.length() == 0) {
-        		throw new ElasticsearchIllegalArgumentException(
-        				"Analyzer " + name + " has invalid settings: end " +
-        						"delimiter cannot be empty string");
-        	}
-        	InlineAnnotationFilter.SYNONYM_END_DELIMITER = end_delim;
-        }
-        
-        if (syn_prefix != null) {
-        	InlineAnnotationFilter.SYNONYM_PREFIX = syn_prefix;
-        }
-        
-        if (syn_suffix != null) {
-        	InlineAnnotationFilter.SYNONYM_SUFFIX = syn_suffix;
-        }
-        
-        if (delimiter != null) {
-        	if (delimiter.length() == 0) {
-        		throw new ElasticsearchIllegalArgumentException(
+            if (end_delim != null) {
+                if (end_delim.length() == 0) {
+                    throw new org.elasticsearch.ElasticsearchException("Analyzer " + name + " has invalid settings: end delimiter cannot be empty string");
+                }
+                InlineAnnotationFilter.SYNONYM_END_DELIMITER = end_delim;
+            }
+
+            if (syn_prefix != null) {
+                    InlineAnnotationFilter.SYNONYM_PREFIX = syn_prefix;
+            }
+
+            if (syn_suffix != null) {
+                    InlineAnnotationFilter.SYNONYM_SUFFIX = syn_suffix;
+            }
+
+            if (delimiter != null) {
+                    if (delimiter.length() == 0) {
+                            throw new org.elasticsearch.ElasticsearchException(
         				"Analyzer " + name + " has invalid settings: " +
         						"delimiter cannot be empty string");
-        	}
-        	InlineAnnotationFilter.SYNONYMS_DELIMITER = delimiter;
-        }
+                    }
+                    InlineAnnotationFilter.SYNONYMS_DELIMITER = delimiter;
+            }
         
-        if (token_type != null) {
-        	InlineAnnotationFilter.SYNONYM_TOKEN_TYPE = token_type;
+            if (token_type != null) {
+                InlineAnnotationFilter.SYNONYM_TOKEN_TYPE = token_type;
+            }
         }
-	}
 }
